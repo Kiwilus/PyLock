@@ -4,13 +4,13 @@ import os
 import sys
 from pathlib import Path
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
 
-# Generates a secure key from a password (using salt)
-def derive_key(password: str, salt: bytes = None) -> bytes:
+# Generate a secure key from a password using PBKDF2 with salt.
+def derive_key(password: str, salt: bytes = None) -> tuple[bytes, bytes]:
     if salt is None:
         salt = os.urandom(16)  # 16 bytes salt is standard and secure
 
@@ -18,98 +18,136 @@ def derive_key(password: str, salt: bytes = None) -> bytes:
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
-        iterations=600_000,  # high iterations = safer against brute force
+        iterations=600_000,   # High iterations make brute-force attacks much harder
     )
     key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
     return key, salt
 
-# Encrypts a file and saves it as .pylock
+# Check if a file is likely a PyLock encrypted file.
+# Returns True only if it has .pylock extension and sufficient size.
+def is_pylock_file(file_path: Path) -> bool:
+    if not file_path.exists() or file_path.is_dir():
+        return False
+
+    # Must have .pylock extension
+    if file_path.suffix.lower() != ".pylock":
+        return False
+
+    # Minimum size: 16 bytes salt + reasonable Fernet overhead
+    try:
+        size = file_path.stat().st_size
+        return size >= 48
+    except Exception:
+        return False
+
+# Encrypt a file and save it with .pylock extension.
 def encrypt_file(file_path: Path, password: str):
     if not file_path.exists():
-        print(f"Error: file {file_path} not found!")
+        print(f"Error: File '{file_path}' not found!")
         sys.exit(1)
 
-    print(f"Encrypting {file_path} ...")
+    # Prevent encrypting an already encrypted file
+    if is_pylock_file(file_path):
+        print(f"Error: The file '{file_path.name}' is already encrypted (.pylock).")
+        print("   Use --decrypt to decrypt it instead.")
+        sys.exit(1)
 
-    # Deriving Salt + Key
+    print(f"Encrypting {file_path.name} ...")
+
+    # Derive key and salt
     key, salt = derive_key(password)
     fernet = Fernet(key)
 
-    # read file
+    # Read the original file
     data = file_path.read_bytes()
 
-    # encrypt
+    # Encrypt the data
     encrypted = fernet.encrypt(data)
 
-    # Output file: originalname.pylock
+    # Create output filename: original.ext.pylock
     output_path = file_path.with_suffix(file_path.suffix + ".pylock")
 
-    # Append salt to the front (so the recipient can use it when decrypting)
+    # Prepend salt to the encrypted data
     output_path.write_bytes(salt + encrypted)
 
-    print(f"Encrypted saved as: {output_path}")
-    print("   your file is now encrypted")
+    print(f"Successfully encrypted → {output_path.name}")
+    print("   You can now safely share this file.")
 
-# decrypts a .pylock file
+# Decrypt a .pylock file and restore the original.
 def decrypt_file(file_path: Path, password: str):
     if not file_path.exists():
-        print(f"Error: file {file_path} not found!")
+        print(f"Error: File '{file_path}' not found!")
         sys.exit(1)
 
-    print(f"Decrypting {file_path} ...")
+    # Prevent trying to decrypt a non-encrypted file
+    if not is_pylock_file(file_path):
+        print(f"Error: The file '{file_path.name}' does not appear to be a PyLock encrypted file.")
+        print("   Only files with the .pylock extension can be decrypted.")
+        print("   Use --encrypt to encrypt a file first.")
+        sys.exit(1)
 
+    print(f"Decrypting {file_path.name} ...")
+
+    # Read the encrypted file
     data = file_path.read_bytes()
 
-    # first 16 Bytes = Salt
+    # Extract salt (first 16 bytes) and encrypted content
     salt = data[:16]
     encrypted = data[16:]
 
-    # Derive Key from Password + Salt
+    # Derive key using the same password and extracted salt
     key, _ = derive_key(password, salt)
     fernet = Fernet(key)
 
     try:
         decrypted = fernet.decrypt(encrypted)
-    except Exception:
+    except InvalidToken:
         print("Wrong password or corrupted file!")
         sys.exit(1)
+    except Exception as e:
+        print(f"Decryption failed: {e}")
+        sys.exit(1)
 
-    # Ausgabedatei ohne .pylock-Endung
-    if file_path.suffix == ".pylock":
+    # Create output filename by removing .pylock extension
+    if file_path.suffix.lower() == ".pylock":
         output_path = file_path.with_suffix("")
     else:
-        output_path = file_path.with_name(file_path.name + ".decrypted")
+        output_path = file_path.with_name(file_path.stem + "_decrypted")
+
+    # Avoid overwriting existing files
+    if output_path.exists():
+        output_path = file_path.with_name(file_path.stem + "_decrypted" + file_path.suffix)
 
     output_path.write_bytes(decrypted)
 
-    print(f"Decrypted saved as: {output_path}")
+    print(f"Successfully decrypted → {output_path.name}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="PyLock - Securely encrypt and decrypt files with password"
+        description="PyLock - Securely encrypt and decrypt files with a password"
     )
-    parser.add_argument("file", type=Path, help="path to file")
+    parser.add_argument("file", type=Path, help="Path to the file")
 
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--encrypt", "-e", action="store_true", help="Encrypt file")
-    group.add_argument("--decrypt", "-d", action="store_true", help="decrypt file")
+    group.add_argument("--encrypt", "-e", action="store_true", help="Encrypt the file")
+    group.add_argument("--decrypt", "-d", action="store_true", help="Decrypt the file")
 
-    # Passwort kann über Kommandozeile kommen (nicht empfohlen) oder interaktiv
-    parser.add_argument("--password", "-p", type=str, help="Password (unsafe in the history!)")
+    parser.add_argument("--password", "-p", type=str,
+                        help="Password (not recommended - visible in shell history)")
 
     args = parser.parse_args()
 
-    # Passwort holen
+    # Get password
     if args.password:
         password = args.password
-        print("⚠Warning: Password via command line is insecure (appears in the shell history)!")
+        print("⚠Warning: Using password via command line is insecure (visible in history)!")
     else:
         if args.encrypt:
             password = getpass.getpass("Enter a strong password: ")
-            password2 = getpass.getpass("repeat the password: ")
+            password2 = getpass.getpass("Repeat the password: ")
             if password != password2:
-                print("password do not match!")
+                print("Passwords do not match!")
                 sys.exit(1)
         else:
             password = getpass.getpass("Enter the password to decrypt: ")
