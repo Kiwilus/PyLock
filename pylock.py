@@ -12,13 +12,13 @@ import base64
 # Generate a secure key from a password using PBKDF2 with salt.
 def derive_key(password: str, salt: bytes = None) -> tuple[bytes, bytes]:
     if salt is None:
-        salt = os.urandom(16)  # 16 bytes salt is standard and secure
+        salt = os.urandom(16) # 16 bytes salt is standard and secure
 
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
-        iterations=600_000,   # High iterations make brute-force attacks much harder
+        iterations=600_000, # High iterations make brute-force attacks much harder
     )
     key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
     return key, salt
@@ -33,7 +33,6 @@ def is_pylock_file(file_path: Path) -> bool:
     if file_path.suffix.lower() != ".pylock":
         return False
 
-    # Minimum size: 16 bytes salt + reasonable Fernet overhead
     try:
         size = file_path.stat().st_size
         return size >= 48
@@ -81,7 +80,9 @@ def decrypt_file(file_path: Path, password: str):
 
     # Prevent trying to decrypt a non-encrypted file
     if not is_pylock_file(file_path):
-        print(f"Error: The file '{file_path.name}' does not appear to be a PyLock encrypted file.")
+        print(
+            f"Error: The file '{file_path.name}' does not appear to be a PyLock encrypted file."
+        )
         print("   Only files with the .pylock extension can be decrypted.")
         print("   Use --encrypt to encrypt a file first.")
         sys.exit(1)
@@ -95,7 +96,6 @@ def decrypt_file(file_path: Path, password: str):
     salt = data[:16]
     encrypted = data[16:]
 
-    # Derive key using the same password and extracted salt
     key, _ = derive_key(password, salt)
     fernet = Fernet(key)
 
@@ -103,24 +103,26 @@ def decrypt_file(file_path: Path, password: str):
         decrypted = fernet.decrypt(encrypted)
     except InvalidToken:
         print("Wrong password or corrupted file!")
-        sys.exit(1)
+        return False
     except Exception as e:
         print(f"Decryption failed: {e}")
-        sys.exit(1)
+        return False
 
     # Create output filename by removing .pylock extension
-    if file_path.suffix.lower() == ".pylock":
+    if file_path.name.endswith(".pylock"):
         output_path = file_path.with_suffix("")
     else:
-        output_path = file_path.with_name(file_path.stem + "_decrypted")
+        output_path = file_path.with_name(file_path.stem)
 
-    # Avoid overwriting existing files
     if output_path.exists():
-        output_path = file_path.with_name(file_path.stem + "_decrypted" + file_path.suffix)
+        output_path = file_path.with_name(
+            file_path.stem + "_decrypted" + file_path.suffix.replace(".pylock", "")
+        )
 
     output_path.write_bytes(decrypted)
 
     print(f"Successfully decrypted → {output_path.name}")
+    return True
 
 
 def main():
@@ -133,15 +135,21 @@ def main():
     group.add_argument("--encrypt", "-e", action="store_true", help="Encrypt the file")
     group.add_argument("--decrypt", "-d", action="store_true", help="Decrypt the file")
 
-    parser.add_argument("--password", "-p", type=str,
-                        help="Password (not recommended - visible in shell history)")
+    parser.add_argument(
+        "--password",
+        "-p",
+        type=str,
+        help="Password (not recommended - visible in shell history)",
+    )
 
     args = parser.parse_args()
 
     # Get password
     if args.password:
         password = args.password
-        print("⚠Warning: Using password via command line is insecure (visible in history)!")
+        print(
+            "⚠ Warning: Using password via command line is insecure (visible in history)!"
+        )
     else:
         if args.encrypt:
             password = getpass.getpass("Enter a strong password: ")
@@ -150,7 +158,13 @@ def main():
                 print("Passwords do not match!")
                 sys.exit(1)
         else:
-            password = getpass.getpass("Enter the password to decrypt: ")
+            while True:
+                password = getpass.getpass("Enter the password to decrypt: ")
+
+                if decrypt_file(args.file, password):
+                    return
+                else:
+                    print("Try again!\n")
 
     if args.encrypt:
         encrypt_file(args.file, password)
@@ -160,3 +174,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
