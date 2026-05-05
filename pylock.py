@@ -156,7 +156,7 @@ def main():
     # Get password
     if args.password:
         password = args.password
-        print("⚠ Warning: Using --password is insecure (visible in shell history)!")
+        print("Warning: Using --password is insecure (visible in shell history)!")
     else:
         if args.encrypt:
             password = getpass.getpass("Enter a strong password: ")
@@ -182,7 +182,7 @@ def main():
     if args.delete_original and args.file.exists():
         try:
             args.file.unlink()
-            print(f"🗑️  Original file deleted: {args.file.name}")
+            print(f"Original file deleted: {args.file.name}")
         except Exception as e:
             print(f"Warning: Could not delete original file: {e}")
 
