@@ -21,10 +21,36 @@ $BatContent = @"
 $BatPath = Join-Path $ProjectDir "pylock.bat"
 $BatContent | Out-File -FilePath $BatPath -Encoding ASCII
 
+# Add project folder to USER PATH automatically
+$CurrentUserPath = [Environment]::GetEnvironmentVariable(
+    "Path",
+    [EnvironmentVariableTarget]::User
+)
+
+if ($CurrentUserPath -notlike "*$ProjectDir*") {
+
+    $NewPath = "$CurrentUserPath;$ProjectDir"
+
+    [Environment]::SetEnvironmentVariable(
+        "Path",
+        $NewPath,
+        [EnvironmentVariableTarget]::User
+    )
+
+    Write-Host ""
+    Write-Host "Added PyLock to USER PATH."
+}
+else {
+    Write-Host ""
+    Write-Host "PyLock already exists in PATH."
+}
+
+Write-Host ""
 Write-Host "Installation completed."
 Write-Host "Created: $BatPath"
 Write-Host ""
-Write-Host "To use 'pylock' command, add this folder to your PATH:"
-Write-Host $ProjectDir
+Write-Host "IMPORTANT:"
+Write-Host "Restart PowerShell/CMD before using 'pylock'."
 Write-Host ""
-Write-Host "After adding to PATH you can simply type: pylock"
+Write-Host "Then you can run:"
+Write-Host "pylock"
