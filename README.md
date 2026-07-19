@@ -22,23 +22,8 @@ It uses strong cryptography (Fernet + PBKDF2) and adds a `.pylock` extension to 
 
 ---
 
-## Installation
+## Installation (with uv)
 
-### with installation script
-
-#### On windows
-```bash
-.\install_windows.ps1
-```
-#### On linux
-```bash
-chmod +x install_linux.sh
-```
-```bash
-./install_linux.sh
-```
-
-### Or manually
 1. Clone the repository or download the files
 ```bash
 git clone https://github.com/Kiwilus/PyLock.git
@@ -47,9 +32,9 @@ git clone https://github.com/Kiwilus/PyLock.git
 ```bash
 cd PyLock
 ```
-3. Install the required dependency:
+3. Install PyLock:
 ```bash
-pip install -r requirements.txt
+uv tool install .
 ```
 
 ## Usage

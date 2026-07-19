@@ -1,0 +1,10 @@
+[project]
+name = "pylock"
+version = "0.1.0"
+description = "PyLock is a simple and secure command-line tool to encrypt and decrypt files using a password"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+pylock = "pylock.cli:main"
