@@ -1,4 +1,5 @@
 import argparse
+import base64
 import getpass
 import os
 import sys
@@ -7,14 +8,15 @@ from pathlib import Path
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-import base64
 
 # Optional: Progress bar for large files
 try:
     from tqdm import tqdm
+
     TQDM_AVAILABLE = True
 except ImportError:
     TQDM_AVAILABLE = False
+
 
 # Generate a secure key from a password using PBKDF2HMAC with a random salt
 def derive_key(password: str, salt: bytes = None) -> tuple[bytes, bytes]:
@@ -25,10 +27,11 @@ def derive_key(password: str, salt: bytes = None) -> tuple[bytes, bytes]:
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
-        iterations=1_000_000,   # High iterations make brute-force attacks much harder
+        iterations=1_000_000,  # High iterations make brute-force attacks much harder
     )
     key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
     return key, salt
+
 
 # Check if a file is likely a PyLock encrypted file.
 # Returns True only if it has .pylock extension and sufficient size.
@@ -44,6 +47,7 @@ def is_pylock_file(file_path: Path) -> bool:
         return file_path.stat().st_size >= 48
     except Exception:
         return False
+
 
 # Encrypt a file and save it with .pylock extension.
 def encrypt_file(file_path: Path, password: str):
@@ -84,7 +88,9 @@ def decrypt_file(file_path: Path, password: str) -> bool:
 
     # Prevent trying to decrypt a non-encrypted file
     if not is_pylock_file(file_path):
-        print(f"Error: '{file_path.name}' does not appear to be a PyLock encrypted file.")
+        print(
+            f"Error: '{file_path.name}' does not appear to be a PyLock encrypted file."
+        )
         print("   Only .pylock files can be decrypted.")
         sys.exit(1)
 
@@ -131,7 +137,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="PyLock - Securely encrypt and decrypt files with a password",
         epilog="Best practice: Do not use --password in automated scripts.",
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("file", type=Path, help="Path to the file to process")
 
@@ -140,15 +146,17 @@ def main():
     group.add_argument("--decrypt", "-d", action="store_true", help="Decrypt the file")
 
     parser.add_argument(
-        "--password", "-p",
+        "--password",
+        "-p",
         type=str,
         help="Provide password directly (not recommended)",
     )
 
     parser.add_argument(
-        "--delete-original", "-D",
+        "--delete-original",
+        "-D",
         action="store_true",
-        help="Delete the original file after successful operation (use with caution)"
+        help="Delete the original file after successful operation (use with caution)",
     )
 
     args = parser.parse_args()
